@@ -169,6 +169,7 @@ class FinderSync: FIFinderSync {
         L10n.languageProvider = { [weak self] in
             self?.store.preferences.language ?? .system
         }
+        applyFinderMenuPreferencesFallback()
         applyPinnedApplicationFallback()
         observePreferenceChanges()
         refreshMonitoredDirectoriesFromPreferences()
@@ -192,6 +193,12 @@ class FinderSync: FIFinderSync {
             CFNotificationCenterGetDarwinNotifyCenter(),
             Unmanaged.passUnretained(self).toOpaque(),
             CFNotificationName(PinnedApplicationSyncStore.notificationName as CFString),
+            nil
+        )
+        CFNotificationCenterRemoveObserver(
+            CFNotificationCenterGetDarwinNotifyCenter(),
+            Unmanaged.passUnretained(self).toOpaque(),
+            CFNotificationName(FinderMenuPreferencesSyncStore.notificationName as CFString),
             nil
         )
     }
@@ -227,6 +234,7 @@ class FinderSync: FIFinderSync {
             logger.debug("Built Finder menu in \(elapsed, privacy: .public) ms")
         }
 
+        applyFinderMenuPreferencesFallback()
         applyPinnedApplicationFallback()
         let selectedURLs = FIFinderSyncController.default().selectedItemURLs() ?? []
         let targetedURL = FIFinderSyncController.default().targetedURL()
@@ -244,10 +252,30 @@ class FinderSync: FIFinderSync {
     }
 
     private func updateMonitoredDirectories() {
-        store.reload()
+        // A signed build reloads the authoritative App Group file. An unsigned
+        // extension must keep its last valid in-memory menu state until a valid
+        // live snapshot or cache replaces it; reloading its private fallback
+        // file here would resurrect defaults after a corrupt/missing payload.
+        if sharedContainerAvailable {
+            store.reload()
+        }
+        applyFinderMenuPreferencesFallback()
         applyPinnedApplicationFallback()
         refreshMonitoredDirectoriesFromPreferences()
         preloadApplicationIcons()
+    }
+
+    private func applyFinderMenuPreferencesFallback() {
+        guard !sharedContainerAvailable,
+              let preferences = FinderMenuPreferencesSyncStore.synchronizedPreferences(
+                applyingTo: store.preferences
+              )
+        else {
+            return
+        }
+        // Only menu fields are replaced. Directory bookmarks, monitoring access
+        // and Quick Feature state remain owned by this process's preferences.
+        store.replaceLoadedPreferences(preferences)
     }
 
     private func applyPinnedApplicationFallback() {
@@ -314,7 +342,8 @@ class FinderSync: FIFinderSync {
         for notificationName in [
             PreferencesChangeNotifier.name,
             PinnedApplicationSyncStore.notificationName,
-            FinderFolderSyncStore.notificationName
+            FinderFolderSyncStore.notificationName,
+            FinderMenuPreferencesSyncStore.notificationName
         ] {
             CFNotificationCenterAddObserver(
                 CFNotificationCenterGetDarwinNotifyCenter(),

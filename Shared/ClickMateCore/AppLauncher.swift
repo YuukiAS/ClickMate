@@ -73,6 +73,214 @@ enum PinnedApplicationPathPolicy {
     }
 }
 
+/// Menu-only state shared with the Finder extension when an unsigned build has
+/// no App Group. Security bookmarks and unrelated runtime settings never cross
+/// this channel.
+struct FinderMenuPreferencesSnapshot: Codable, Equatable {
+    static let currentVersion = 1
+
+    var version: Int
+    var updatedAt: Date
+    var menuPreferences: FinderMenuPreferences
+
+    init(preferences: ClickMatePreferences, updatedAt: Date = .now) {
+        version = Self.currentVersion
+        self.updatedAt = updatedAt
+        menuPreferences = FinderMenuPreferences(preferences: preferences)
+    }
+}
+
+struct FinderMenuPreferences: Codable, Equatable {
+    var enabledCommands: Set<MenuCommand>
+    var menuCommandOrder: [MenuCommand]
+    var foldedMenuGroups: Set<MenuCommandGroup>
+    var topLevelShortcutCommands: Set<MenuCommand>
+    var topLevelShortcutTemplateIDs: Set<String>
+    var removedMenuCommands: Set<MenuCommand>
+    var templates: [FileTemplate]
+    var detectedApplicationOrder: [String]
+    var removedDetectedApplicationBundleIDs: Set<String>
+    var pinnedApplicationPaths: [String]
+    var language: AppLanguage
+    var finderToolsEnabled: Bool
+
+    init(preferences: ClickMatePreferences) {
+        enabledCommands = preferences.enabledCommands
+        menuCommandOrder = preferences.menuCommandOrder
+        foldedMenuGroups = preferences.foldedMenuGroups
+        topLevelShortcutCommands = preferences.topLevelShortcutCommands
+        topLevelShortcutTemplateIDs = preferences.topLevelShortcutTemplateIDs
+        removedMenuCommands = preferences.removedMenuCommands
+        templates = preferences.templates
+        detectedApplicationOrder = preferences.detectedApplicationOrder
+        removedDetectedApplicationBundleIDs = preferences.removedDetectedApplicationBundleIDs
+        pinnedApplicationPaths = preferences.pinnedApplicationPaths
+        language = preferences.language
+        finderToolsEnabled = preferences.finderToolsEnabled
+    }
+
+    func applying(to current: ClickMatePreferences) -> ClickMatePreferences {
+        var updated = current
+        updated.removedMenuCommands = removedMenuCommands
+        updated.enabledCommands = enabledCommands.subtracting(removedMenuCommands)
+        updated.menuCommandOrder = ClickMatePreferences.normalizedMenuCommandOrder(menuCommandOrder)
+        updated.foldedMenuGroups = foldedMenuGroups
+        updated.topLevelShortcutCommands = topLevelShortcutCommands.subtracting(removedMenuCommands)
+        updated.topLevelShortcutTemplateIDs = topLevelShortcutTemplateIDs
+        updated.templates = templates
+        updated.detectedApplicationOrder = AppDetector.normalizedApplicationOrder(detectedApplicationOrder)
+        updated.removedDetectedApplicationBundleIDs = removedDetectedApplicationBundleIDs
+        updated.pinnedApplicationPaths = pinnedApplicationPaths
+        updated.language = language
+        updated.finderToolsEnabled = finderToolsEnabled
+        return updated
+    }
+
+    func isValid() -> Bool {
+        guard menuCommandOrder.count <= MenuCommand.allCases.count,
+              Set(menuCommandOrder).count == menuCommandOrder.count,
+              enabledCommands.isDisjoint(with: removedMenuCommands),
+              topLevelShortcutCommands.isDisjoint(with: removedMenuCommands),
+              templates.count <= 512,
+              detectedApplicationOrder.count <= AppDetector.defaultApplicationOrder.count,
+              Set(detectedApplicationOrder).count == detectedApplicationOrder.count,
+              Set(detectedApplicationOrder).isSubset(of: Set(AppDetector.defaultApplicationOrder)),
+              removedDetectedApplicationBundleIDs.isSubset(of: Set(AppDetector.defaultApplicationOrder)),
+              pinnedApplicationPaths.count <= 256
+        else {
+            return false
+        }
+
+        let templateIDs = Set(templates.map(\.id))
+        guard templateIDs.count == templates.count,
+              topLevelShortcutTemplateIDs.isSubset(of: templateIDs),
+              templates.allSatisfy({ template in
+                  !template.id.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                      && !template.id.contains("\0")
+                      && !template.displayName.contains("\0")
+                      && !template.defaultBasename.contains("\0")
+                      && !template.fileExtension.contains("\0")
+                      && !template.contents.contains("\0")
+                      && template.validationError == nil
+              })
+        else {
+            return false
+        }
+
+        return pinnedApplicationPaths.allSatisfy { path in
+            path.utf8.count <= 4096
+                && !path.contains("\0")
+                && (path as NSString).isAbsolutePath
+                && (path as NSString).pathExtension.caseInsensitiveCompare("app") == .orderedSame
+                && URL(fileURLWithPath: path).standardizedFileURL.path == path
+        }
+    }
+}
+
+enum FinderMenuPreferencesSyncStore {
+    static let notificationName = "\(AppConstants.bundleIdentifier).finderMenuPreferencesChanged"
+    static let pasteboardName = NSPasteboard.Name("\(AppConstants.bundleIdentifier).finder-menu-preferences")
+    static let pasteboardType = NSPasteboard.PasteboardType("\(AppConstants.bundleIdentifier).finder-menu-preferences+json")
+    static let maximumPayloadSize = 1024 * 1024
+
+    static var defaultCacheFileURL: URL {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+            .appendingPathComponent("ClickMate", isDirectory: true)
+            .appendingPathComponent("FinderMenuPreferencesSync.json")
+    }
+
+    @discardableResult
+    static func publish(
+        preferences: ClickMatePreferences,
+        updatedAt: Date = .now,
+        pasteboardName: NSPasteboard.Name = pasteboardName,
+        sharedContainerURL: URL? = ApplicationGroupAccessPolicy.sharedContainerURL()
+    ) -> Bool {
+        guard sharedContainerURL == nil else { return false }
+        let snapshot = FinderMenuPreferencesSnapshot(preferences: preferences, updatedAt: updatedAt)
+        guard snapshot.menuPreferences.isValid(),
+              let data = try? JSONEncoder().encode(snapshot),
+              data.count <= maximumPayloadSize
+        else {
+            return false
+        }
+
+        let pasteboard = NSPasteboard(name: pasteboardName)
+        pasteboard.clearContents()
+        guard pasteboard.setData(data, forType: pasteboardType) else { return false }
+        CFNotificationCenterPostNotification(
+            CFNotificationCenterGetDarwinNotifyCenter(),
+            CFNotificationName(notificationName as CFString),
+            nil,
+            nil,
+            true
+        )
+        return true
+    }
+
+    static func synchronizedSnapshot(
+        cacheFileURL: URL = defaultCacheFileURL,
+        pasteboardName: NSPasteboard.Name = pasteboardName,
+        sharedContainerURL: URL? = ApplicationGroupAccessPolicy.sharedContainerURL()
+    ) -> FinderMenuPreferencesSnapshot? {
+        guard sharedContainerURL == nil else { return nil }
+        let pasteboard = NSPasteboard(name: pasteboardName)
+        let live = decodeValidatedSnapshot(from: pasteboard.data(forType: pasteboardType))
+        let cached = decodeValidatedSnapshot(from: try? Data(contentsOf: cacheFileURL))
+
+        // The named pasteboard is the current process-to-process state. It wins
+        // even if a wall-clock adjustment made the cache timestamp look newer.
+        if let live {
+            if live != cached {
+                writeCache(live, to: cacheFileURL)
+            }
+            return live
+        }
+        return cached
+    }
+
+    static func synchronizedPreferences(
+        applyingTo current: ClickMatePreferences,
+        cacheFileURL: URL = defaultCacheFileURL,
+        pasteboardName: NSPasteboard.Name = pasteboardName,
+        sharedContainerURL: URL? = ApplicationGroupAccessPolicy.sharedContainerURL()
+    ) -> ClickMatePreferences? {
+        synchronizedSnapshot(
+            cacheFileURL: cacheFileURL,
+            pasteboardName: pasteboardName,
+            sharedContainerURL: sharedContainerURL
+        )?.menuPreferences.applying(to: current)
+    }
+
+    static func decodeValidatedSnapshot(from data: Data?) -> FinderMenuPreferencesSnapshot? {
+        guard let data,
+              data.count <= maximumPayloadSize,
+              let snapshot = try? JSONDecoder().decode(FinderMenuPreferencesSnapshot.self, from: data),
+              snapshot.version == FinderMenuPreferencesSnapshot.currentVersion,
+              snapshot.menuPreferences.isValid()
+        else {
+            return nil
+        }
+        return snapshot
+    }
+
+    private static func writeCache(_ snapshot: FinderMenuPreferencesSnapshot, to fileURL: URL) {
+        guard let data = try? JSONEncoder().encode(snapshot), data.count <= maximumPayloadSize else { return }
+        do {
+            try FileManager.default.createDirectory(
+                at: fileURL.deletingLastPathComponent(),
+                withIntermediateDirectories: true,
+                attributes: [.posixPermissions: 0o700]
+            )
+            try data.write(to: fileURL, options: .atomic)
+            try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: fileURL.path)
+        } catch {
+            Logger(subsystem: AppConstants.bundleIdentifier, category: "FinderSync")
+                .error("Could not persist Finder menu preferences")
+        }
+    }
+}
+
 /// Monitoring hints only. Bookmarks and file access remain in the main app.
 /// The named pasteboard is not an authenticated source of authorization.
 struct FinderFolderSyncSnapshot: Codable, Equatable {

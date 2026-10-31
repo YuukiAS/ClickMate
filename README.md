@@ -191,7 +191,7 @@ xcodebuild analyze -project ClickMate.xcodeproj -scheme ClickMate -destination '
 
 A fully functional signed build needs one development team for the main app, Helper, and Finder extension, with the App Group capability provisioned. Enable the Finder extension in System Settings after installing the build.
 
-On first installation, registering menus in default folders does not depend on Full Disk Access. Folder grants control actual file access. Explicitly selected custom folders can use the local fallback sync channel without App Group; other Finder settings still require App Group. The permission page reports these separately. Restarting processes does not prove a permission grant, and an operation result applies only to its displayed directory.
+On first installation, registering menus in default folders does not depend on Full Disk Access. Folder grants control actual file access. Finder menu preferences and explicitly selected custom folders use local fallback sync channels when App Group is unavailable. Shared runtime status and automatic cross-process permission verification still require App Group. The permission page reports these separately. Restarting processes does not prove a permission grant, and an operation result applies only to its displayed directory.
 
 For the bilingual documentation screenshot workflow, see [Screenshot generation](Scripts/README-screenshots.md).
 
@@ -239,7 +239,7 @@ Set `CLICKMATE_PREVIOUS_APP` during packaging to check all three components agai
 Scripts/package_unsigned_dmg.sh
 ```
 
-Unsigned packages remove App Group entitlements. Default Finder actions use the URL fallback. Explicitly selected monitoring folders sync through a local session channel and are cached by the extension; access bookmarks stay in the main app. Select the actual destination subfolder in Permissions when Downloads or another standard folder points to an external disk. Other Finder settings synchronization, shared runtime status, and automatic permission verification remain unavailable. Shortcut service startup is session-only, and rebuilt ad-hoc identities may require permissions again. Use a signed build to validate stable permission identities and the complete shared-queue path.
+Unsigned packages remove App Group entitlements. Default Finder actions use the URL fallback. Finder menu preferences and explicitly selected monitoring folders sync through local session channels and are cached by the extension; access bookmarks stay in the main app. Select the actual destination subfolder in Permissions when Downloads or another standard folder points to an external disk. Shared runtime status and automatic cross-process permission verification remain unavailable. Shortcut service startup is session-only, and rebuilt ad-hoc identities may require permissions again. Use a signed build to validate stable permission identities and the complete shared-queue path.
 
 The unsigned DMG contains `ClickMate.app` and an `Applications` shortcut. Drag the app to Applications, then open the installed copy. Its application name and installation steps match the other packages; it does not use a developer certificate or notarization. Replacing a build may require permissions again, so avoid running different copies together.
 

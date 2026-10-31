@@ -457,7 +457,7 @@ final class PreferencesStore: ObservableObject {
 
     private let fileURL: URL
     private let allowsWrites: Bool
-    private let publishesPinnedApplications: Bool
+    private let publishesUnsignedFallbackState: Bool
     private let saveQueue = DispatchQueue(label: "\(AppConstants.bundleIdentifier).preferences.save")
     private let persistence: Persistence
     private let reference = StoreReference()
@@ -472,7 +472,8 @@ final class PreferencesStore: ObservableObject {
     init(fileURL: URL = PreferencesStore.sharedPreferencesURL, allowsWrites: Bool = true) {
         self.fileURL = fileURL
         self.allowsWrites = allowsWrites
-        self.publishesPinnedApplications = allowsWrites
+        self.publishesUnsignedFallbackState = allowsWrites
+            && ApplicationGroupAccessPolicy.sharedContainerURL() == nil
             && fileURL.standardizedFileURL == Self.fallbackPreferencesURL.standardizedFileURL
         if allowsWrites, fileURL.standardizedFileURL == Self.sharedPreferencesURL.standardizedFileURL {
             Self.migrateFallbackPreferencesIfNeeded(to: fileURL)
@@ -482,7 +483,7 @@ final class PreferencesStore: ObservableObject {
         self.storageState = loaded.state
         self.persistence = Persistence(fileURL: fileURL, state: loaded.state)
         reference.store = self
-        if !loaded.state.isCorrupt { publishPinnedApplicationsIfNeeded(loaded.preferences) }
+        if !loaded.state.isCorrupt { publishUnsignedFallbackStateIfNeeded(loaded.preferences) }
         if allowsWrites, loaded.state == .firstRun || loaded.didMigrate {
             saveSynchronously(preferences, successState: loaded.state == .firstRun ? .firstRun : .loaded)
         }
@@ -515,7 +516,7 @@ final class PreferencesStore: ObservableObject {
     func waitForPendingSaves() {
         storageState = saveQueue.sync { persistence.state }
         if storageState == .loaded || storageState == .firstRun {
-            publishPinnedApplicationsIfNeeded(preferences)
+            publishUnsignedFallbackStateIfNeeded(preferences)
         }
     }
 
@@ -593,21 +594,22 @@ final class PreferencesStore: ObservableObject {
             persistence.write(preferences, allowCorruptOverwrite: allowCorruptOverwrite, preserveBackup: preserveBackup, successState: successState)
         }
         applySaveState()
-        if succeeded { publishPinnedApplicationsIfNeeded(preferences) }
+        if succeeded { publishUnsignedFallbackStateIfNeeded(preferences) }
         return succeeded
     }
 
     private func applySaveState() {
         storageState = saveQueue.sync { persistence.state }
         if storageState == .loaded || storageState == .firstRun {
-            publishPinnedApplicationsIfNeeded(preferences)
+            publishUnsignedFallbackStateIfNeeded(preferences)
         }
     }
 
-    private func publishPinnedApplicationsIfNeeded(_ preferences: ClickMatePreferences) {
-        guard publishesPinnedApplications else { return }
+    private func publishUnsignedFallbackStateIfNeeded(_ preferences: ClickMatePreferences) {
+        guard publishesUnsignedFallbackState else { return }
         PinnedApplicationSyncStore.publish(paths: preferences.pinnedApplicationPaths)
         FinderFolderSyncStore.publish(preferences: preferences)
+        FinderMenuPreferencesSyncStore.publish(preferences: preferences)
     }
 
     // The queue owns mutable persistence state. Only the main-queue notification touches

@@ -19,9 +19,9 @@ cat >&2 <<'WARNING'
 WARNING: This package uses an unstable ad-hoc identity.
 It can be used for local functional diagnostics, including Finder Extension,
 but macOS may require permissions again after every rebuild or replacement.
-The App Group entitlement is intentionally removed, so shared Finder settings
-and automatic cross-process permission verification are unavailable.
-Explicitly selected monitoring folders sync through the local fallback channel.
+The App Group entitlement is intentionally removed. Finder menu preferences
+and explicitly selected monitoring folders sync through local fallback channels;
+automatic cross-process permission verification remains unavailable.
 Use package_development_dmg.sh or package_signed_dmg.sh for stable acceptance.
 ======================================================================
 WARNING
@@ -162,8 +162,8 @@ echo
 echo "This DMG is not Developer ID signed or notarized."
 echo "Drag ClickMate.app to Applications, then open the installed application."
 echo "Ad-hoc signatures change when the app is rebuilt, so macOS may require TCC permissions again."
-echo "App Group access is disabled; selected monitoring folders use local fallback sync."
-echo "Other Finder settings sync and automatic permission verification remain unavailable."
+echo "App Group access is disabled; Finder menu preferences and selected monitoring folders use local fallback sync."
+echo "Automatic cross-process permission verification remains unavailable."
 echo "ClickMate will run shortcuts through the session-only Helper fallback."
 echo "The Helper keeps running after ClickMate quits, but it is not started automatically after logout or restart."
 echo "Recipients may need to remove quarantine after copying the app:"
