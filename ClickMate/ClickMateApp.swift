@@ -12,8 +12,10 @@ struct ClickMateApp: App {
             ContentView()
                 .environmentObject(store)
                 .environmentObject(updateCoordinator)
-                .frame(width: 980, height: 620)
-                .fixedSize()
+                .frame(
+                    minWidth: AppWindows.settingsMinimumContentSize.width,
+                    minHeight: AppWindows.settingsMinimumContentSize.height
+                )
                 .onOpenURL { url in
                     URLRouter.handle(url)
                 }
@@ -21,8 +23,12 @@ struct ClickMateApp: App {
                     await updateCoordinator.checkAutomaticallyIfNeeded()
                 }
         }
+        .defaultSize(
+            width: AppWindows.settingsDefaultContentSize.width,
+            height: AppWindows.settingsDefaultContentSize.height
+        )
         .windowStyle(.titleBar)
-        .windowResizability(.contentSize)
+        .windowResizability(.contentMinSize)
         .commands {
             CommandGroup(replacing: .appTermination) {
                 Button(L10n.string("app.quit")) {

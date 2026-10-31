@@ -52,10 +52,13 @@ enum AppWindows {
     static let settingsID = NSUserInterfaceItemIdentifier("com.zxacn.clickmate.settings")
     static let tasksID = NSUserInterfaceItemIdentifier("com.zxacn.clickmate.file-tasks")
     static let archiveID = NSUserInterfaceItemIdentifier("com.zxacn.clickmate.archive-editor")
+    static let settingsDefaultContentSize = NSSize(width: 900, height: 600)
+    static let settingsMinimumContentSize = NSSize(width: 680, height: 460)
     private(set) static weak var settingsWindow: NSWindow?
 
     static func registerSettings(_ window: NSWindow) {
         window.identifier = settingsID
+        window.contentMinSize = settingsMinimumContentSize
         settingsWindow = window
     }
 
