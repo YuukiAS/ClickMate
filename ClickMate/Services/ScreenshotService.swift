@@ -1,7 +1,7 @@
 import AppKit
 import Combine
 import CoreGraphics
-import ScreenCaptureKit
+@preconcurrency import ScreenCaptureKit
 import OSLog
 
 enum ScreenshotTargetApplication {
