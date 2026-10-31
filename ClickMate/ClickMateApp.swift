@@ -127,7 +127,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func showSettingsWindow() {
         DispatchQueue.main.async {
-            NSApp.setActivationPolicy(.regular)
             NSApp.activate(ignoringOtherApps: true)
             AppWindows.settingsWindow?.makeKeyAndOrderFront(nil)
         }

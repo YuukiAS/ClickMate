@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - fix/unsigned-menu-sync-small-screen
+      - fix/hide-dock-icon
   workflow_dispatch:
 
 permissions:
