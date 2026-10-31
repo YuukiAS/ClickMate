@@ -91,6 +91,49 @@ final class UIRenderingTests: XCTestCase {
         }
     }
 
+    func testAllSettingsTabsRenderAtMinimumWindowContentSize() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("clickmate-minimum-settings-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = PreferencesStore(
+            fileURL: directory.appendingPathComponent("settings.json"),
+            allowsWrites: false
+        )
+        let service = QuickFeatureHelperService(
+            service: .loginItem(identifier: "com.zxacn.clickmate.tests.minimum-window"),
+            mainBundleURL: directory.appendingPathComponent("ClickMate.app"),
+            isFinderRuntimeChannelAvailable: false,
+            presentationSnapshotLoader: {
+                QuickFeaturePresentationSnapshot(
+                    registrationStatus: .notRegistered,
+                    runtimeSnapshot: nil,
+                    finderRuntimeSnapshot: nil,
+                    finderExtensionStatus: .unknown
+                )
+            }
+        )
+        defer { service.stop() }
+        let monitor = DirectoryAccessMonitor()
+        let tabSize = NSSize(width: 648, height: 350)
+        let tabs: [(String, AnyView)] = [
+            ("menus", AnyView(MenusView().environmentObject(store))),
+            ("layout", AnyView(MenuLayoutView().environmentObject(store))),
+            ("templates", AnyView(TemplatesView().environmentObject(store))),
+            ("apps", AnyView(AppsView().environmentObject(store))),
+            ("quick-features", AnyView(QuickFeaturesView(helperService: service).environmentObject(store))),
+            ("permissions", AnyView(PermissionsView(helperService: service, directoryAccess: monitor).environmentObject(store)))
+        ]
+
+        for (name, view) in tabs {
+            try render(
+                view,
+                size: tabSize,
+                to: directory.appendingPathComponent("\(name).png")
+            )
+        }
+    }
+
     func testNativeTaskAndArchiveViewsRenderInBothLanguages() throws {
         let directory = URL(fileURLWithPath: "/tmp/clickmate-ui", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)

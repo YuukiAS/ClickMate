@@ -106,6 +106,55 @@ final class FinderMenuDocumentationTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: directory.appendingPathComponent("preferences.json").path))
     }
 
+    func testFinderMenuBuiltFromFallbackOmitsDisabledAndRemovedCommands() throws {
+        let directory = try menuFixtureDirectory()
+        let pasteboardName = NSPasteboard.Name("com.zxacn.clickmate.tests.menu.\(UUID().uuidString)")
+        let cacheURL = directory.appendingPathComponent("FinderMenuPreferencesSync.json")
+        defer { NSPasteboard(name: pasteboardName).clearContents() }
+
+        var source = ClickMatePreferences.defaults
+        source.enabledCommands = [.newFile, .openITerm, .openVSCode]
+        source.removedMenuCommands = Set(MenuCommand.allCases).subtracting(source.enabledCommands)
+        source.foldedMenuGroups = []
+        XCTAssertTrue(FinderMenuPreferencesSyncStore.publish(
+            preferences: source,
+            pasteboardName: pasteboardName,
+            sharedContainerURL: nil
+        ))
+
+        let store = PreferencesStore(
+            fileURL: directory.appendingPathComponent("extension-preferences.json"),
+            allowsWrites: false
+        )
+        let applied = try XCTUnwrap(FinderMenuPreferencesSyncStore.synchronizedPreferences(
+            applyingTo: store.preferences,
+            cacheFileURL: cacheURL,
+            pasteboardName: pasteboardName,
+            sharedContainerURL: nil
+        ))
+        store.replaceLoadedPreferences(applied)
+        let finder = FinderSync(documentationStore: store)
+        let menu = finder.documentationMenu(context: FinderMenuContext(
+            kind: .container,
+            selectedURLs: [],
+            targetedURL: directory
+        ))
+
+        XCTAssertNotNil(menuItem(in: menu, title: MenuCommandGroup.newFile.title))
+        XCTAssertNotNil(menuItem(in: menu, title: MenuCommand.openITerm.title))
+        XCTAssertNotNil(menuItem(in: menu, title: MenuCommand.openVSCode.title))
+        for group in [MenuCommandGroup.copy, .hash, .fileUtilities, .advanced] {
+            XCTAssertNil(menuItem(in: menu, title: group.title), group.rawValue)
+        }
+        for command in [
+            MenuCommand.copyPOSIXPath, .sha256, .sha1, .md5, .compress, .editArchive,
+            .metadata, .imageDimensions, .toggleHiddenFiles, .openTerminal, .openCursor,
+            .openBBEdit, .openSublime
+        ] {
+            XCTAssertNil(menuItem(in: menu, title: command.title), command.rawValue)
+        }
+    }
+
     func testGenerateNativeFinderMenuDocumentation() throws {
         guard let path = ProcessInfo.processInfo.environment["CLICKMATE_DOCUMENTATION_OUTPUT"],
               path.hasPrefix("/")

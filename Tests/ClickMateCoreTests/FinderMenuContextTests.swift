@@ -205,3 +205,228 @@ final class FinderFolderSyncTests: XCTestCase {
         "/Volumes/ClickMateFolderSync-\(UUID().uuidString)/\(relativePath)"
     }
 }
+
+final class FinderMenuPreferencesSyncTests: XCTestCase {
+    func testSnapshotEncodingRoundTripsMenuOnlyConfiguration() throws {
+        var preferences = ClickMatePreferences.defaults
+        preferences.enabledCommands = [.newFile, .openITerm, .openVSCode]
+        preferences.removedMenuCommands = Set(MenuCommand.allCases).subtracting(preferences.enabledCommands)
+        preferences.foldedMenuGroups = [.openHere]
+        preferences.topLevelShortcutCommands = [.openVSCode]
+        preferences.topLevelShortcutTemplateIDs = ["md"]
+        preferences.detectedApplicationOrder = [
+            "com.microsoft.VSCode", "com.googlecode.iterm2", "com.apple.Terminal",
+            "com.todesktop.230313mzl4w4u92", "com.barebones.bbedit", "com.sublimetext.4"
+        ]
+        preferences.removedDetectedApplicationBundleIDs = ["com.barebones.bbedit"]
+        preferences.pinnedApplicationPaths = ["/Applications/Example.app"]
+        preferences.language = .simplifiedChinese
+        preferences.finderToolsEnabled = true
+        preferences.monitoredFolderBookmarks = ["/private": Data("secret-bookmark".utf8)]
+
+        let snapshot = FinderMenuPreferencesSnapshot(
+            preferences: preferences,
+            updatedAt: Date(timeIntervalSinceReferenceDate: 1234)
+        )
+        let data = try JSONEncoder().encode(snapshot)
+        let decoded = try XCTUnwrap(FinderMenuPreferencesSyncStore.decodeValidatedSnapshot(from: data))
+        let json = try XCTUnwrap(String(data: data, encoding: .utf8))
+
+        XCTAssertEqual(decoded, snapshot)
+        XCTAssertFalse(json.contains("monitoredFolderBookmarks"))
+        XCTAssertFalse(json.contains("secret-bookmark"))
+        XCTAssertFalse(json.contains("quickFeatureSettings"))
+    }
+
+    func testUnsupportedSnapshotVersionIsRejected() throws {
+        var snapshot = FinderMenuPreferencesSnapshot(preferences: .defaults)
+        snapshot.version = FinderMenuPreferencesSnapshot.currentVersion + 1
+
+        XCTAssertNil(FinderMenuPreferencesSyncStore.decodeValidatedSnapshot(
+            from: try JSONEncoder().encode(snapshot)
+        ))
+    }
+
+    func testMalformedOversizedAndInvalidPayloadsAreRejected() throws {
+        var duplicateOrder = FinderMenuPreferencesSnapshot(preferences: .defaults)
+        duplicateOrder.menuPreferences.menuCommandOrder = [.newFile, .newFile]
+
+        XCTAssertNil(FinderMenuPreferencesSyncStore.decodeValidatedSnapshot(from: Data("not-json".utf8)))
+        XCTAssertNil(FinderMenuPreferencesSyncStore.decodeValidatedSnapshot(
+            from: Data(count: FinderMenuPreferencesSyncStore.maximumPayloadSize + 1)
+        ))
+        XCTAssertNil(FinderMenuPreferencesSyncStore.decodeValidatedSnapshot(
+            from: try JSONEncoder().encode(duplicateOrder)
+        ))
+    }
+
+    func testLiveSnapshotWinsOverFutureDatedCacheAndReplacesIt() throws {
+        try withIsolatedChannel { pasteboardName, cacheURL in
+            var cachedPreferences = ClickMatePreferences.defaults
+            cachedPreferences.enabledCommands = [.sha256]
+            let cached = FinderMenuPreferencesSnapshot(
+                preferences: cachedPreferences,
+                updatedAt: Date(timeIntervalSinceNow: 86_400)
+            )
+            try JSONEncoder().encode(cached).write(to: cacheURL)
+
+            var livePreferences = ClickMatePreferences.defaults
+            livePreferences.enabledCommands = [.newFile, .openITerm, .openVSCode]
+            XCTAssertTrue(FinderMenuPreferencesSyncStore.publish(
+                preferences: livePreferences,
+                updatedAt: .now,
+                pasteboardName: pasteboardName,
+                sharedContainerURL: nil
+            ))
+
+            let synchronized = try XCTUnwrap(FinderMenuPreferencesSyncStore.synchronizedSnapshot(
+                cacheFileURL: cacheURL,
+                pasteboardName: pasteboardName,
+                sharedContainerURL: nil
+            ))
+            XCTAssertEqual(synchronized.menuPreferences.enabledCommands, livePreferences.enabledCommands)
+            XCTAssertEqual(
+                try JSONDecoder().decode(
+                    FinderMenuPreferencesSnapshot.self,
+                    from: Data(contentsOf: cacheURL)
+                ),
+                synchronized
+            )
+        }
+    }
+
+    func testCacheRestoresLastValidSnapshotWhenLiveStateIsMissing() throws {
+        try withIsolatedChannel { pasteboardName, cacheURL in
+            var preferences = ClickMatePreferences.defaults
+            preferences.enabledCommands = [.newFile, .openVSCode]
+            let cached = FinderMenuPreferencesSnapshot(preferences: preferences)
+            try JSONEncoder().encode(cached).write(to: cacheURL)
+            NSPasteboard(name: pasteboardName).clearContents()
+
+            XCTAssertEqual(
+                FinderMenuPreferencesSyncStore.synchronizedSnapshot(
+                    cacheFileURL: cacheURL,
+                    pasteboardName: pasteboardName,
+                    sharedContainerURL: nil
+                ),
+                cached
+            )
+        }
+    }
+
+    func testInvalidLiveStateKeepsLastValidCache() throws {
+        try withIsolatedChannel { pasteboardName, cacheURL in
+            let cached = FinderMenuPreferencesSnapshot(preferences: .defaults)
+            let cachedData = try JSONEncoder().encode(cached)
+            try cachedData.write(to: cacheURL)
+            let pasteboard = NSPasteboard(name: pasteboardName)
+            pasteboard.clearContents()
+            XCTAssertTrue(pasteboard.setData(Data("broken-live-state".utf8), forType: FinderMenuPreferencesSyncStore.pasteboardType))
+
+            XCTAssertEqual(
+                FinderMenuPreferencesSyncStore.synchronizedSnapshot(
+                    cacheFileURL: cacheURL,
+                    pasteboardName: pasteboardName,
+                    sharedContainerURL: nil
+                ),
+                cached
+            )
+            XCTAssertEqual(try Data(contentsOf: cacheURL), cachedData)
+        }
+    }
+
+    func testMainAppPublicationIsAppliedByFinderFallbackConsumer() throws {
+        try withIsolatedChannel { pasteboardName, cacheURL in
+            var preferences = ClickMatePreferences.defaults
+            preferences.enabledCommands = [.newFile, .openITerm, .openVSCode]
+            preferences.removedMenuCommands = Set(MenuCommand.allCases).subtracting(preferences.enabledCommands)
+            XCTAssertTrue(FinderMenuPreferencesSyncStore.publish(
+                preferences: preferences,
+                pasteboardName: pasteboardName,
+                sharedContainerURL: nil
+            ))
+
+            let applied = try XCTUnwrap(FinderMenuPreferencesSyncStore.synchronizedPreferences(
+                applyingTo: .defaults,
+                cacheFileURL: cacheURL,
+                pasteboardName: pasteboardName,
+                sharedContainerURL: nil
+            ))
+            XCTAssertEqual(applied.enabledCommands, preferences.enabledCommands)
+            XCTAssertEqual(applied.removedMenuCommands, preferences.removedMenuCommands)
+            XCTAssertFalse(applied.orderedVisibleMenuGroups.contains(.hash))
+            XCTAssertFalse(applied.orderedVisibleMenuGroups.contains(.fileUtilities))
+            XCTAssertFalse(applied.orderedVisibleMenuGroups.contains(.advanced))
+        }
+    }
+
+    func testSignedAppGroupPathDoesNotPublishOrConsumeFallback() throws {
+        try withIsolatedChannel { pasteboardName, cacheURL in
+            let sharedContainerURL = cacheURL.deletingLastPathComponent()
+            XCTAssertFalse(FinderMenuPreferencesSyncStore.publish(
+                preferences: .defaults,
+                pasteboardName: pasteboardName,
+                sharedContainerURL: sharedContainerURL
+            ))
+            XCTAssertNil(NSPasteboard(name: pasteboardName).data(forType: FinderMenuPreferencesSyncStore.pasteboardType))
+            XCTAssertNil(FinderMenuPreferencesSyncStore.synchronizedSnapshot(
+                cacheFileURL: cacheURL,
+                pasteboardName: pasteboardName,
+                sharedContainerURL: sharedContainerURL
+            ))
+        }
+    }
+
+    func testApplyingMenuSnapshotPreservesFolderAuthorizationAndFinderCutState() {
+        var current = ClickMatePreferences.defaults
+        let bookmark = Data("bookmark".utf8)
+        current.monitoredFolderPaths = ["/Volumes/Example/Folder"]
+        current.monitoredFolderBookmarks = ["/Volumes/Example/Folder": bookmark]
+        current.quickFeatureSettings = [
+            QuickFeatureSettings(id: .finderCut, isEnabled: true, shortcut: .commandX),
+            QuickFeatureSettings(id: .screenshot, isEnabled: false, shortcut: .screenshotDefault)
+        ]
+
+        var source = ClickMatePreferences.defaults
+        source.enabledCommands = [.newFile]
+        source.pinnedApplicationPaths = ["/Applications/Example.app"]
+        let applied = FinderMenuPreferences(preferences: source).applying(to: current)
+
+        XCTAssertEqual(applied.monitoredFolderPaths, current.monitoredFolderPaths)
+        XCTAssertEqual(applied.monitoredFolderBookmarks, current.monitoredFolderBookmarks)
+        XCTAssertEqual(applied.quickFeatureSettings, current.quickFeatureSettings)
+        XCTAssertEqual(applied.pinnedApplicationPaths, source.pinnedApplicationPaths)
+        XCTAssertTrue(applied.quickFeatureSettings(for: .finderCut).isEnabled)
+    }
+
+    func testRemovingAllHashCommandsRemovesHashGroup() {
+        assertGroupDisappears(.hash)
+    }
+
+    func testRemovingAllFileUtilityCommandsRemovesFileUtilityGroup() {
+        assertGroupDisappears(.fileUtilities)
+    }
+
+    func testRemovingAllAdvancedCommandsRemovesAdvancedGroup() {
+        assertGroupDisappears(.advanced)
+    }
+
+    private func assertGroupDisappears(_ group: MenuCommandGroup, file: StaticString = #filePath, line: UInt = #line) {
+        var preferences = ClickMatePreferences.defaults
+        group.commands.forEach { preferences.removeMenuCommand($0) }
+
+        XCTAssertFalse(preferences.orderedVisibleMenuGroups.contains(group), file: file, line: line)
+    }
+
+    private func withIsolatedChannel(_ body: (NSPasteboard.Name, URL) throws -> Void) throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ClickMateMenuSync-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let pasteboardName = NSPasteboard.Name("com.zxacn.clickmate.tests.menu-sync.\(UUID().uuidString)")
+        defer {
+            NSPasteboard(name: pasteboardName).clearContents()
+            try? FileManager.default.removeItem(at: directory)
+        }
+        try body(pasteboardName, directory.appendingPathComponent("FinderMenuPreferencesSync.json"))
+    }
+}

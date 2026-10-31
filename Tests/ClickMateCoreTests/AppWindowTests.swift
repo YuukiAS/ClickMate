@@ -71,6 +71,14 @@ final class AppWindowTests: XCTestCase {
         AppWindows.registerSettings(settings)
         XCTAssertTrue(AppWindows.settingsWindow === settings)
         XCTAssertEqual(settings.identifier, AppWindows.settingsID)
+        XCTAssertEqual(settings.contentMinSize, AppWindows.settingsMinimumContentSize)
         XCTAssertFalse(AppWindows.settingsWindow === task)
+    }
+
+    func testSettingsWindowUsesResizableSmallScreenBounds() {
+        XCTAssertEqual(AppWindows.settingsDefaultContentSize, NSSize(width: 900, height: 600))
+        XCTAssertEqual(AppWindows.settingsMinimumContentSize, NSSize(width: 680, height: 460))
+        XCTAssertLessThan(AppWindows.settingsMinimumContentSize.width, 980)
+        XCTAssertLessThan(AppWindows.settingsMinimumContentSize.height, 620)
     }
 }
