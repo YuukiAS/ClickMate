@@ -1,0 +1,93 @@
+name: ClickMate fix CI
+
+on:
+  push:
+    branches:
+      - fix/unsigned-menu-sync-small-screen
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-test-analyze-package:
+    runs-on: macos-15
+    timeout-minutes: 60
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Show build environment
+        run: |
+          sw_vers
+          xcodebuild -version
+          uname -m
+
+      - name: Build
+        run: |
+          set -euo pipefail
+          xcodebuild build \
+            -project ClickMate.xcodeproj \
+            -scheme ClickMate \
+            -destination 'platform=macOS' \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Test
+        run: |
+          set -euo pipefail
+          xcodebuild test \
+            -project ClickMate.xcodeproj \
+            -scheme ClickMate \
+            -destination 'platform=macOS' \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Analyze
+        run: |
+          set -euo pipefail
+          xcodebuild analyze \
+            -project ClickMate.xcodeproj \
+            -scheme ClickMate \
+            -destination 'platform=macOS' \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Package unsigned Universal 2 DMG
+        run: |
+          set -euo pipefail
+          Scripts/package_unsigned_dmg.sh
+
+      - name: Verify package and write summary
+        run: |
+          set -euo pipefail
+          dmg_path="$(find build/dist -maxdepth 1 -type f -name 'ClickMate-*-universal-unsigned.dmg' -print -quit)"
+          test -n "$dmg_path"
+          test -f "$dmg_path"
+          app_path="build/diagnostic-dmg-root/ClickMate.app"
+          binaries=(
+            "$app_path/Contents/MacOS/ClickMate"
+            "$app_path/Contents/PlugIns/ClickMateFinderExtension.appex/Contents/MacOS/ClickMateFinderExtension"
+            "$app_path/Contents/Library/LoginItems/ClickMateHelper.app/Contents/MacOS/ClickMateHelper"
+          )
+          for binary in "${binaries[@]}"; do
+            lipo "$binary" -verify_arch arm64 x86_64
+          done
+          {
+            echo "commit=${GITHUB_SHA}"
+            echo "runner=$(sw_vers -productVersion)"
+            echo "xcode=$(xcodebuild -version | tr '\n' ' ')"
+            echo "dmg=$(basename "$dmg_path")"
+            shasum -a 256 "$dmg_path"
+            for binary in "${binaries[@]}"; do
+              echo "$(basename "$binary")=$(lipo -archs "$binary")"
+            done
+          } > build/dist/clickmate-ci-summary.txt
+
+      - name: Upload fixed unsigned DMG
+        uses: actions/upload-artifact@v4
+        with:
+          name: ClickMate-fixed-unsigned-dmg
+          path: |
+            build/dist/ClickMate-*-universal-unsigned.dmg
+            build/dist/clickmate-ci-summary.txt
+          if-no-files-found: error
+          retention-days: 3
