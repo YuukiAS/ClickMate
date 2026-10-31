@@ -573,10 +573,10 @@ struct PermissionsView: View {
         let statusSystemImage: String
         let statusColor: Color
         switch statusIsGood {
-        case true:
+        case .some(true):
             statusSystemImage = "checkmark.circle.fill"
             statusColor = .green
-        case false:
+        case .some(false):
             statusSystemImage = "exclamationmark.circle"
             statusColor = .orange
         case nil:
