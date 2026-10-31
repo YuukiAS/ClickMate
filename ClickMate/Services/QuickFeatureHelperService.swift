@@ -2,7 +2,7 @@ import AppKit
 import Combine
 import OSLog
 import Security
-import ServiceManagement
+@preconcurrency import ServiceManagement
 
 @MainActor
 final class QuickFeatureHelperService: ObservableObject {
