@@ -150,6 +150,7 @@ final class ScreenshotSessionModel {
     }
 }
 
+@MainActor
 enum ScreenshotAnnotationRenderer {
     private static let context = CIContext(options: [.cacheIntermediates: true])
 
