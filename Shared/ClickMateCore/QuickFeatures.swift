@@ -200,3 +200,33 @@ struct ScreenshotSettings: Codable, Equatable {
         savesToDesktop = try container.decodeIfPresent(Bool.self, forKey: .savesToDesktop) ?? false
     }
 }
+
+struct FinderCutSession: Equatable {
+    private(set) var urls: [URL] = []
+    private(set) var pasteboardChangeCount: Int?
+
+    mutating func recordCopy(urls: [URL], expectedURLs: [URL]?, pasteboardChangeCount: Int) -> Bool {
+        guard !urls.isEmpty, urls.allSatisfy(\.isFileURL) else { return false }
+        if let expectedURLs,
+           Set(expectedURLs.map { $0.standardizedFileURL.path }) != Set(urls.map { $0.standardizedFileURL.path }) {
+            return false
+        }
+        self.urls = urls
+        self.pasteboardChangeCount = pasteboardChangeCount
+        return true
+    }
+
+    func canMove(pasteboardChangeCount: Int) -> Bool {
+        self.pasteboardChangeCount == pasteboardChangeCount && !urls.isEmpty
+    }
+
+    mutating func observePasteboard(changeCount: Int) {
+        if let pasteboardChangeCount, pasteboardChangeCount != changeCount {
+            cancel()
+        }
+    }
+
+    mutating func cancel() {
+        self = Self()
+    }
+}

@@ -296,3 +296,6 @@
 "settingsData.unsupportedVersion" = "此设置文件使用了不支持的格式版本。";
 
 "guide.trialFilesRetained" = "您添加或修改的文件已保留在 %@。";
+
+"finder.cutSelection" = "剪切";
+"notification.cutUnavailable" = "无法启动访达剪切。";

@@ -184,3 +184,41 @@ final class QuickFeaturesTests: XCTestCase {
         XCTAssertEqual(settings.shortcut, .finderCutDefault)
     }
 }
+
+final class FinderCutSessionTests: XCTestCase {
+    private let first = URL(fileURLWithPath: "/tmp/one")
+    private let second = URL(fileURLWithPath: "/tmp/two")
+
+    func testMenuSelectionCanMoveUsingTheSameClipboardSessionAsTheShortcut() {
+        for selection in [[first], [first, second]] {
+            var menu = FinderCutSession()
+            var keyboard = FinderCutSession()
+            let copied = Array(selection.reversed())
+            XCTAssertTrue(menu.recordCopy(urls: copied, expectedURLs: selection, pasteboardChangeCount: 3))
+            XCTAssertTrue(keyboard.recordCopy(urls: copied, expectedURLs: nil, pasteboardChangeCount: 3))
+            XCTAssertEqual(menu, keyboard)
+            XCTAssertTrue(menu.canMove(pasteboardChangeCount: 3))
+            XCTAssertFalse(menu.canMove(pasteboardChangeCount: 4))
+        }
+        XCTAssertEqual(KeyboardShortcut.finderCutDefault, .commandX)
+    }
+
+    func testOrdinaryCopyInvalidatesPendingMove() {
+        var session = FinderCutSession()
+        XCTAssertTrue(session.recordCopy(urls: [first], expectedURLs: nil, pasteboardChangeCount: 3))
+        session.observePasteboard(changeCount: 4)
+        XCTAssertFalse(session.canMove(pasteboardChangeCount: 4))
+        XCTAssertTrue(session.urls.isEmpty)
+
+        XCTAssertTrue(session.recordCopy(urls: [first], expectedURLs: nil, pasteboardChangeCount: 5))
+        session.cancel()
+        XCTAssertFalse(session.canMove(pasteboardChangeCount: 5))
+    }
+
+    func testSelectionChangedBeforeFinderCopyCannotArmMove() {
+        var session = FinderCutSession()
+        XCTAssertFalse(session.recordCopy(urls: [second], expectedURLs: [first], pasteboardChangeCount: 3))
+        XCTAssertFalse(session.canMove(pasteboardChangeCount: 3))
+        XCTAssertFalse(session.recordCopy(urls: [], expectedURLs: nil, pasteboardChangeCount: 4))
+    }
+}

@@ -5,6 +5,7 @@ struct PendingCommand: Codable, Equatable, Identifiable {
     enum Kind: String, Codable {
         case createFile
         case copyHash
+        case cutSelection
         case openHere
         case openApplication
         case compress
@@ -163,6 +164,19 @@ struct PendingCommand: Codable, Equatable, Identifiable {
             templateID: nil,
             directoryURL: nil,
             urls: [url],
+            hashAlgorithm: nil,
+            menuCommand: nil,
+            applicationPath: nil
+        )
+    }
+
+    static func cutSelection(urls: [URL]) -> PendingCommand {
+        PendingCommand(
+            id: UUID(),
+            kind: .cutSelection,
+            templateID: nil,
+            directoryURL: nil,
+            urls: urls,
             hashAlgorithm: nil,
             menuCommand: nil,
             applicationPath: nil

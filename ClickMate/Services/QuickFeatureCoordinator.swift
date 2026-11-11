@@ -178,6 +178,10 @@ final class QuickFeatureCoordinator {
         }
     }
 
+    func cutFinderSelection(_ urls: [URL]) {
+        finderCutController.cutFinderSelection(urls)
+    }
+
     func testScreenshot() {
         captureScreenshot()
     }

@@ -296,3 +296,6 @@
 "settingsData.unsupportedVersion" = "This settings file uses an unsupported format version.";
 
 "guide.trialFilesRetained" = "Files you added or changed were preserved at %@.";
+
+"finder.cutSelection" = "Cut";
+"notification.cutUnavailable" = "ClickMate could not start Finder Cut.";

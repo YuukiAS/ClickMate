@@ -51,7 +51,7 @@ The menu adapts to its context: blank areas offer file creation, the current fol
 
 In **Quick Features**, enable each feature, record a shortcut, or restore its default. Shortcuts must include Command or Control; duplicate assignments and registration conflicts are reported.
 
-- **Finder Cut — `⌘X`:** select files in Finder, cut, navigate to the destination, then press `⌘V` to move them. Pressing `⌘C` before pasting cancels the pending move. Cut only handles Finder when focus is outside a text field.
+- **Finder Cut — `⌘X` or right-click → Cut:** select one or more files or folders in Finder, cut, then press `⌘V` in the destination to move them using Finder. A new copy cancels the pending move. The menu item appears on selected items in monitored folders. Enable Finder Cut and grant the background service Accessibility access to use either entry point. The keyboard shortcut applies outside text fields.
 - **Screenshot — `⌃⌘S`:** begin on the display under the pointer, then choose a region, the current display, or scrolling capture.
 
 The background service handles shortcuts after you close settings or quit the main app. Signed builds can register it as a login item. Unsigned builds use a session-only service and require reopening ClickMate after logout or restart.

@@ -246,6 +246,15 @@ class FinderSync: FIFinderSync {
         menuActions.removeAll(keepingCapacity: true)
 
         let rootMenu = NSMenu(title: L10n.string("app.name"))
+        if store.preferences.finderToolsEnabled, !context.cutSelection.isEmpty {
+            rootMenu.addItem(actionItem(
+                title: L10n.string("finder.cutSelection"),
+                token: .cutSelection,
+                context: context,
+                isEnabled: true,
+                image: menuSymbolImage("scissors")
+            ))
+        }
         appendConfiguredMenuGroups(to: rootMenu, context: context)
 
         return rootMenu
@@ -769,6 +778,12 @@ class FinderSync: FIFinderSync {
         )
 
         switch token {
+        case .cutSelection:
+            let urls = context.cutSelection
+            guard !urls.isEmpty else { return }
+            if !dispatchToContainingApp(command: .cutSelection(urls: urls), fallbackRoute: .cutSelection(urls: urls)) {
+                notifyFailure("notification.cutUnavailable")
+            }
         case .template(let id):
             createFile(templateID: id, context: context)
         case .pinnedApplication(let path):

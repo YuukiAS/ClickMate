@@ -557,3 +557,5 @@
 "permissions.redirectedFoldersDescription" = "Some default folders point outside your home folder. Select each destination folder to enable its menu. Choose the folder itself, not the entire disk.";
 "permissions.folderSyncRequested" = "Folder configuration saved and sync requested. Finder coverage is not yet verified.";
 "permissions.folderSyncFailed" = "Folder configuration was saved, but the sync request failed. Retry selecting the folder or restart ClickMate; Finder coverage is unverified.";
+
+"notification.cutNeedsSetup" = "Enable Finder Cut and allow Accessibility for ClickMate Background Service in Permissions.";

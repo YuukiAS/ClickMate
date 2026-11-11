@@ -23,6 +23,10 @@ struct FinderMenuContext {
 
     var actionURLs: [URL] { selectedURLs }
 
+    var cutSelection: [URL] {
+        kind == .items && selectedURLs.allSatisfy(\.isFileURL) ? selectedURLs : []
+    }
+
     func urls(for command: MenuCommand) -> [URL] {
         if !selectedURLs.isEmpty { return selectedURLs }
         switch command {

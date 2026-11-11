@@ -121,6 +121,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             )
         case .refreshStatus:
             refreshPermissionsAndPublish()
+        case let .cutSelection(urls):
+            guard Date.now.timeIntervalSince(command.enqueuedAt) < QuickFeatureHelperCommand.finderSelectionTimeout else { return }
+            quickFeatureCoordinator.cutFinderSelection(urls)
         case .testScreenshot:
             quickFeatureCoordinator.testScreenshot()
         case let .beginShortcutRecording(sessionID):

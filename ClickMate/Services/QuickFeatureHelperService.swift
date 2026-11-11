@@ -820,6 +820,34 @@ final class QuickFeatureHelperService: ObservableObject {
         }
     }
 
+    func cutFinderSelection(_ urls: [URL]) {
+        guard !urls.isEmpty, urls.allSatisfy(\.isFileURL) else { return }
+        let preferences = PreferencesStore.loadSnapshot()
+        guard preferences.finderToolsEnabled,
+              preferences.backgroundServiceEnabled,
+              preferences.quickFeatureSettings(for: .finderCut).isEnabled
+        else {
+            ActionNotifier.notify(titleKey: "notification.failureTitle", bodyKey: "notification.cutNeedsSetup")
+            return
+        }
+
+        let requestedAt = Date.now
+        Task {
+            guard await ensureHelperRunning(),
+                  runtimeSnapshot?.activeFeatures.contains(.finderCut) == true
+            else {
+                ActionNotifier.notify(titleKey: "notification.failureTitle", bodyKey: "notification.cutNeedsSetup")
+                return
+            }
+            guard Date.now.timeIntervalSince(requestedAt) < QuickFeatureHelperCommand.finderSelectionTimeout,
+                  enqueue(.cutSelection(urls: urls)) != nil
+            else {
+                ActionNotifier.notify(titleKey: "notification.failureTitle", bodyKey: "notification.noSelection")
+                return
+            }
+        }
+    }
+
     private func requestPermission(_ kind: QuickFeaturePermissionKind) {
         guard let request = permissionRequestTracker.begin(kind: kind) else { return }
         invalidatePresentationRefresh()

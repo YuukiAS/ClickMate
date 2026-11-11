@@ -2,6 +2,27 @@ import Foundation
 import XCTest
 
 final class BatchRoutingTests: XCTestCase {
+    func testCutSelectionFallbackDoesNotRequireAnAppGroup() throws {
+        let first = URL(fileURLWithPath: "/tmp/with space.txt")
+        let second = URL(fileURLWithPath: "/tmp/folder", isDirectory: true)
+        for urls in [[first], [first, second]] {
+            let route = FinderActionRoute.cutSelection(urls: urls)
+            let decoded = try XCTUnwrap(FinderActionRoute(url: XCTUnwrap(route.url)))
+            XCTAssertEqual(decoded, route)
+            XCTAssertFalse(decoded.requiresVisibleWindow)
+            XCTAssertEqual(decoded.pendingCommand.kind, .cutSelection)
+            XCTAssertEqual(decoded.pendingCommand.urls, urls)
+
+            let command = QuickFeatureHelperCommand(action: .cutSelection(urls: urls))
+            let roundTrip = try JSONDecoder().decode(
+                QuickFeatureHelperCommand.self, from: JSONEncoder().encode(command)
+            )
+            XCTAssertEqual(roundTrip, command)
+        }
+        XCTAssertNil(FinderActionRoute.cutSelection(urls: []).url)
+        XCTAssertNil(FinderActionRoute.cutSelection(urls: [try XCTUnwrap(URL(string: "https://example.com/file"))]).url)
+    }
+
     private let urls = [
         URL(fileURLWithPath: "/tmp/中文 File.txt"),
         URL(fileURLWithPath: "/tmp/Bob's file[1].txt")

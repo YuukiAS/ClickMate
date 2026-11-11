@@ -4,11 +4,6 @@ import AppKit
 
 @MainActor
 final class FinderCutController {
-    private struct CutSession {
-        let urls: [URL]
-        let pasteboardChangeCount: Int
-    }
-
     private static let finderBundleIdentifier = "com.apple.finder"
     private static let generatedEventMarker: Int64 = 0x434D_4355_54
 
@@ -16,7 +11,8 @@ final class FinderCutController {
     private var eventTap: CFMachPort?
     private var eventTapSource: CFRunLoopSource?
     private var pasteboardTimer: Timer?
-    private var cutSession: CutSession?
+    private var cutSession = FinderCutSession()
+    private var pendingCopy: DispatchWorkItem?
 
     var isRunning: Bool {
         eventTap != nil
@@ -53,7 +49,7 @@ final class FinderCutController {
     func stop() {
         pasteboardTimer?.invalidate()
         pasteboardTimer = nil
-        cutSession = nil
+        clearCutSession()
 
         if let eventTap {
             CGEvent.tapEnable(tap: eventTap, enable: false)
@@ -124,21 +120,24 @@ final class FinderCutController {
     }
 
     private var hasValidCutSession: Bool {
-        guard let cutSession else { return false }
-        guard NSPasteboard.general.changeCount == cutSession.pasteboardChangeCount else {
-            clearCutSession()
-            return false
-        }
-        return !cutSession.urls.isEmpty
+        cutSession.canMove(pasteboardChangeCount: NSPasteboard.general.changeCount)
     }
 
-    private func beginCut() {
+    func cutFinderSelection(_ urls: [URL]) {
+        guard isRunning, !urls.isEmpty, urls.allSatisfy(\.isFileURL),
+              isFinderReadyForFileCommand
+        else { return }
+        beginCut(expectedURLs: urls)
+    }
+
+    private func beginCut(expectedURLs: [URL]? = nil) {
         clearCutSession()
         let originalChangeCount = NSPasteboard.general.changeCount
         postKey(keyCode: KeyboardShortcut.commandC.keyCode, modifiers: .maskCommand)
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { [weak self] in
+        let copy = DispatchWorkItem { [weak self] in
             guard let self else { return }
+            self.pendingCopy = nil
             let pasteboard = NSPasteboard.general
             guard pasteboard.changeCount != originalChangeCount else {
                 HUDPresenter.shared.show(message: L10n.string("quickFeatures.cutNoSelection"))
@@ -148,15 +147,18 @@ final class FinderCutController {
                 forClasses: [NSURL.self],
                 options: [.urlReadingFileURLsOnly: true]
             ) as? [URL] ?? []
-            guard !urls.isEmpty else {
+            guard self.cutSession.recordCopy(
+                urls: urls, expectedURLs: expectedURLs, pasteboardChangeCount: pasteboard.changeCount
+            ) else {
                 HUDPresenter.shared.show(message: L10n.string("quickFeatures.cutNoSelection"))
                 return
             }
-            self.cutSession = CutSession(urls: urls, pasteboardChangeCount: pasteboard.changeCount)
             HUDPresenter.shared.show(
                 message: L10n.string("quickFeatures.cutActivated", urls.count)
             )
         }
+        pendingCopy = copy
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12, execute: copy)
     }
 
     private func postKey(keyCode: CGKeyCode, modifiers: CGEventFlags) {
@@ -177,26 +179,26 @@ final class FinderCutController {
     private func startPasteboardMonitoring() {
         pasteboardTimer = Timer.scheduledTimer(withTimeInterval: 0.4, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated {
-                guard let self, let cutSession = self.cutSession else { return }
-                if NSPasteboard.general.changeCount != cutSession.pasteboardChangeCount {
-                    self.clearCutSession()
-                }
+                self?.cutSession.observePasteboard(changeCount: NSPasteboard.general.changeCount)
             }
         }
     }
 
     private func observeMoveCompletion() {
+        let movedSession = cutSession
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
-            guard let self, let cutSession = self.cutSession else { return }
-            if NSPasteboard.general.changeCount != cutSession.pasteboardChangeCount
-                || cutSession.urls.allSatisfy({ !FileManager.default.fileExists(atPath: $0.path) }) {
+            guard let self, self.cutSession == movedSession else { return }
+            if NSPasteboard.general.changeCount != movedSession.pasteboardChangeCount
+                || movedSession.urls.allSatisfy({ !FileManager.default.fileExists(atPath: $0.path) }) {
                 self.clearCutSession()
             }
         }
     }
 
     private func clearCutSession() {
-        cutSession = nil
+        pendingCopy?.cancel()
+        pendingCopy = nil
+        cutSession.cancel()
     }
 
     private func isFocusedElementTextInput() -> Bool? {

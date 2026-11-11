@@ -10,7 +10,7 @@ enum URLRouter {
     static func handle(_ url: URL) {
         guard url.scheme == AppConstants.urlScheme else { return }
         guard shouldHandle(url) else { return }
-        logger.info("Handling URL \(url.absoluteString, privacy: .public)")
+        logger.info("Handling URL action=\(url.host ?? "", privacy: .public)")
 
         if let route = FinderActionRoute(url: url) {
             if route.requiresVisibleWindow {
@@ -58,6 +58,8 @@ enum URLRouter {
             createFile(templateID: command.templateID, directories: command.directoryURL.map { [$0] } ?? [])
         case .copyHash:
             copyHash(algorithm: command.hashAlgorithm, urls: command.urls)
+        case .cutSelection:
+            QuickFeatureHelperService.shared.cutFinderSelection(command.urls)
         case .openHere:
             openHere(command: command.menuCommand, directory: command.directoryURL)
         case .openApplication:

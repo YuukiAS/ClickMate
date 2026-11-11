@@ -579,6 +579,7 @@ enum FinderActionRoute: Equatable {
     private enum Host {
         static let createFile = "createFile"
         static let copyHash = "copyHash"
+        static let cutSelection = "cutSelection"
         static let openHere = "openHere"
         static let compress = "compress"
         static let batchFileAction = "batchFileAction"
@@ -588,6 +589,7 @@ enum FinderActionRoute: Equatable {
 
     case createFile(templateID: String, directory: URL)
     case copyHash(algorithm: HashAlgorithm, urls: [URL])
+    case cutSelection(urls: [URL])
     case openHere(command: MenuCommand, directory: URL)
     case compress(urls: [URL])
     case batchFileAction(command: MenuCommand, urls: [URL])
@@ -609,6 +611,9 @@ enum FinderActionRoute: Equatable {
                 queryItems: [URLQueryItem(name: "algorithm", value: algorithm.rawValue)],
                 urls: urls
             )
+        case .cutSelection(let urls):
+            guard !urls.isEmpty else { return nil }
+            return Self.routeURL(host: Host.cutSelection, queryItems: [], urls: urls)
         case .openHere(let command, let directory):
             guard Self.isAllowedOpenHereCommand(command) else { return nil }
             return Self.routeURL(
@@ -639,6 +644,8 @@ enum FinderActionRoute: Equatable {
             PendingCommand.createFile(templateID: templateID, directoryURL: directory)
         case .copyHash(let algorithm, let urls):
             PendingCommand.copyHash(algorithm: algorithm, urls: urls)
+        case .cutSelection(let urls):
+            PendingCommand.cutSelection(urls: urls)
         case .openHere(let command, let directory):
             PendingCommand.openHere(command: command, directoryURL: directory)
         case .compress(let urls):
@@ -691,6 +698,11 @@ enum FinderActionRoute: Equatable {
                 return nil
             }
             self = .copyHash(algorithm: algorithm, urls: urls)
+        case Host.cutSelection:
+            guard actionItems.allSatisfy({ $0.name == "url" && $0.value != nil }),
+                  let urls = Self.fileURLs(in: actionItems), !urls.isEmpty
+            else { return nil }
+            self = .cutSelection(urls: urls)
         case Host.openHere:
             guard let commandValue = Self.singleValue(named: "command", in: queryItems),
                   let command = MenuCommand(rawValue: commandValue),

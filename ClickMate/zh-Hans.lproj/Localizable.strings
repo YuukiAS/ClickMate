@@ -557,3 +557,5 @@
 "permissions.redirectedFoldersDescription" = "部分默认目录已重定向到用户目录之外。请逐个选择实际目标文件夹以启用菜单，仅授权该子文件夹，不要选择整个磁盘。";
 "permissions.folderSyncRequested" = "目录配置已保存并已请求同步；Finder 监控覆盖尚未验证。";
 "permissions.folderSyncFailed" = "目录配置已保存，但同步请求失败。请重新选择目录或重启 ClickMate；Finder 监控覆盖尚未验证。";
+
+"notification.cutNeedsSetup" = "请启用访达剪切，并在权限页为 ClickMate Background Service 授予辅助功能权限。";

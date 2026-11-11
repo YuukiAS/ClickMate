@@ -63,6 +63,7 @@ struct QuickFeatureHelperCommand: Codable, Equatable, Hashable, Identifiable {
         case requestScreenRecording
         case refreshStatus
         case testScreenshot
+        case cutSelection(urls: [URL])
         case beginShortcutRecording(sessionID: UUID)
         case endShortcutRecording(sessionID: UUID)
         case restart
@@ -71,6 +72,7 @@ struct QuickFeatureHelperCommand: Codable, Equatable, Hashable, Identifiable {
         private enum CodingKeys: String, CodingKey {
             case kind
             case sessionID
+            case urls
         }
 
         private enum Kind: String, Codable {
@@ -78,6 +80,7 @@ struct QuickFeatureHelperCommand: Codable, Equatable, Hashable, Identifiable {
             case requestScreenRecording
             case refreshStatus
             case testScreenshot
+            case cutSelection
             case beginShortcutRecording
             case endShortcutRecording
             case restart
@@ -95,6 +98,8 @@ struct QuickFeatureHelperCommand: Codable, Equatable, Hashable, Identifiable {
                 self = .refreshStatus
             case .testScreenshot:
                 self = .testScreenshot
+            case .cutSelection:
+                self = .cutSelection(urls: try container.decode([URL].self, forKey: .urls))
             case .beginShortcutRecording:
                 self = .beginShortcutRecording(
                     sessionID: try container.decode(UUID.self, forKey: .sessionID)
@@ -121,6 +126,9 @@ struct QuickFeatureHelperCommand: Codable, Equatable, Hashable, Identifiable {
                 try container.encode(Kind.refreshStatus, forKey: .kind)
             case .testScreenshot:
                 try container.encode(Kind.testScreenshot, forKey: .kind)
+            case let .cutSelection(urls):
+                try container.encode(Kind.cutSelection, forKey: .kind)
+                try container.encode(urls, forKey: .urls)
             case let .beginShortcutRecording(sessionID):
                 try container.encode(Kind.beginShortcutRecording, forKey: .kind)
                 try container.encode(sessionID, forKey: .sessionID)
@@ -145,6 +153,7 @@ struct QuickFeatureHelperCommand: Codable, Equatable, Hashable, Identifiable {
     }
 
     static let shortcutRecordingSessionTimeout: TimeInterval = 30
+    static let finderSelectionTimeout: TimeInterval = 3
 
     var id: UUID
     var action: Action
@@ -288,7 +297,7 @@ struct QuickFeatureHelperCommandQueue {
     ) -> Bool {
         let command = QuickFeatureHelperCommand(action: action, enqueuedAt: enqueuedAt)
         do {
-            let commands = try loadPendingCommands()
+            let commands = try loadPendingCommands(from: commandFileURLs())
             guard !commands.contains(where: { $0.action == action }) else {
                 return false
             }
@@ -308,7 +317,7 @@ struct QuickFeatureHelperCommandQueue {
         let command = QuickFeatureHelperCommand(action: action, enqueuedAt: enqueuedAt)
 
         do {
-            let commands = try loadPendingCommands()
+            let commands = try loadPendingCommands(from: commandFileURLs())
             if let existingCommand = commands.first(where: { $0.action == action }) {
                 return existingCommand
             }
@@ -323,9 +332,10 @@ struct QuickFeatureHelperCommandQueue {
 
     func consumePending() -> [QuickFeatureHelperCommand] {
         do {
-            let commands = try loadPendingCommands()
+            let files = try commandFileURLs()
+            let commands = try loadPendingCommands(from: files)
             try storage.removeItemIfPresent(at: legacyQueueFileURL)
-            for fileURL in try commandFileURLs() {
+            for fileURL in files {
                 try storage.removeItemIfPresent(at: fileURL)
             }
             return commands
@@ -352,12 +362,12 @@ struct QuickFeatureHelperCommandQueue {
         return commandsDirectoryURL.appendingPathComponent("\(sequence)-\(id.uuidString).json")
     }
 
-    private func loadPendingCommands() throws -> [QuickFeatureHelperCommand] {
+    private func loadPendingCommands(from files: [URL]) throws -> [QuickFeatureHelperCommand] {
         var commands = try storage.load(
             [QuickFeatureHelperCommand].self,
             from: legacyQueueFileURL
         ) ?? []
-        for fileURL in try commandFileURLs() {
+        for fileURL in files {
             if let command = try storage.load(QuickFeatureHelperCommand.self, from: fileURL) {
                 commands.append(command)
             }

@@ -2,6 +2,7 @@ import Foundation
 
 enum FinderCommandToken: Equatable {
     case command(MenuCommand)
+    case cutSelection
     case template(String)
     case pinnedApplication(String)
 
@@ -12,6 +13,9 @@ enum FinderCommandToken: Equatable {
         case "command":
             guard let command = MenuCommand(rawValue: parts[1]) else { return nil }
             self = .command(command)
+        case "selection":
+            guard parts[1] == "cut" else { return nil }
+            self = .cutSelection
         case "template":
             self = .template(parts[1])
         case "pinned":
@@ -25,6 +29,8 @@ enum FinderCommandToken: Equatable {
         switch self {
         case .command(let command):
             return "command:\(command.rawValue)"
+        case .cutSelection:
+            return "selection:cut"
         case .template(let id):
             return "template:\(id)"
         case .pinnedApplication(let path):

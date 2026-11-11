@@ -7,6 +7,37 @@ import XCTest
 /// registering observers, or dispatching any file operation.
 @MainActor
 final class FinderMenuDocumentationTests: XCTestCase {
+    func testCutAppearsForItemSelectionsAndRejectsStaleSelections() throws {
+        let directory = try menuFixtureDirectory()
+        let first = directory.appendingPathComponent("Selected.txt")
+        let second = directory.appendingPathComponent("Selected Folder", isDirectory: true)
+        let finder = FinderSync(documentationStore: demoStore(in: directory, language: .english))
+        let title = L10n.string("finder.cutSelection")
+
+        for urls in [[first], [first, second]] {
+            let menu = finder.documentationMenu(context: FinderMenuContext(
+                kind: .items, selectedURLs: urls, targetedURL: directory
+            ))
+            let item = try XCTUnwrap(menuItem(in: menu, title: title))
+            XCTAssertTrue(item.isEnabled)
+            let action = try XCTUnwrap(finder.documentationAction(
+                for: proxyItem(for: item), currentSelectedURLs: Array(urls.reversed()), currentTargetedURL: directory
+            ))
+            XCTAssertEqual(action.token, .cutSelection)
+            XCTAssertEqual(action.context.cutSelection, urls)
+            XCTAssertNil(finder.documentationAction(
+                for: item, currentSelectedURLs: [], currentTargetedURL: directory
+            ))
+        }
+
+        for (kind, urls): (FinderMenuContext.Kind, [URL]) in [(.items, []), (.container, [first])] {
+            let menu = finder.documentationMenu(context: FinderMenuContext(
+                kind: kind, selectedURLs: urls, targetedURL: directory
+            ))
+            XCTAssertNil(menuItem(in: menu, title: title))
+        }
+    }
+
     func testProxyMenuItemRecoversHashActionAndSnapshotWithoutRepresentedObject() throws {
         let directory = try menuFixtureDirectory()
         let file = directory.appendingPathComponent("Selected.txt")
