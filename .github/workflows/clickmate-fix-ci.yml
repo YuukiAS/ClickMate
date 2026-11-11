@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   build-test-analyze-package:
-    runs-on: macos-15
+    runs-on: macos-15-intel
     timeout-minutes: 60
 
     steps:
