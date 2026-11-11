@@ -1204,12 +1204,9 @@ final class QuickFeatureHelperService: ObservableObject {
         let configuration = NSWorkspace.OpenConfiguration()
         configuration.activates = false
         configuration.addsToRecentItems = false
-        let launched = await withCheckedContinuation { continuation in
-            NSWorkspace.shared.openApplication(at: helperBundleURL, configuration: configuration) { _, error in
-                continuation.resume(returning: error == nil)
-            }
-        }
-        guard launched, await waitForRuntime(timeout: 5) else {
+        guard (try? await NSWorkspace.shared.openApplication(at: helperBundleURL, configuration: configuration)) != nil,
+              await waitForRuntime(timeout: 5)
+        else {
             lastError = L10n.string("permissions.backgroundServiceDirectLaunchFailed")
             return false
         }
