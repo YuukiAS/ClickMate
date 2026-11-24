@@ -5,7 +5,6 @@ import AppKit
 @MainActor
 final class FinderCutController {
     private static let finderBundleIdentifier = "com.apple.finder"
-    private static let generatedEventMarker: Int64 = 0x434D_4355_54
 
     private var cutShortcut = KeyboardShortcut.finderCutDefault
     private var eventTap: CFMachPort?
@@ -80,7 +79,7 @@ final class FinderCutController {
         }
 
         guard type == .keyDown,
-              event.getIntegerValueField(.eventSourceUserData) != Self.generatedEventMarker
+              !FinderCutKeyEvents.isGenerated(event)
         else {
             return Unmanaged.passUnretained(event)
         }
@@ -132,47 +131,43 @@ final class FinderCutController {
 
     private func beginCut(expectedURLs: [URL]? = nil) {
         clearCutSession()
-        let originalChangeCount = NSPasteboard.general.changeCount
+        let initialChangeCount = NSPasteboard.general.changeCount
+        let startedAt = ContinuousClock.now
         postKey(keyCode: KeyboardShortcut.commandC.keyCode, modifiers: .maskCommand)
+        scheduleCopyCheck(expectedURLs: expectedURLs, initialChangeCount: initialChangeCount, startedAt: startedAt)
+    }
 
-        let copy = DispatchWorkItem { [weak self] in
+    private func scheduleCopyCheck(
+        expectedURLs: [URL]?, initialChangeCount: Int, startedAt: ContinuousClock.Instant
+    ) {
+        let check = DispatchWorkItem { [weak self] in
             guard let self else { return }
             self.pendingCopy = nil
             let pasteboard = NSPasteboard.general
-            guard pasteboard.changeCount != originalChangeCount else {
-                HUDPresenter.shared.show(message: L10n.string("quickFeatures.cutNoSelection"))
-                return
-            }
-            let urls = pasteboard.readObjects(
+            let count = pasteboard.changeCount
+            let urls = count == initialChangeCount ? [] : (pasteboard.readObjects(
                 forClasses: [NSURL.self],
                 options: [.urlReadingFileURLsOnly: true]
-            ) as? [URL] ?? []
-            guard self.cutSession.recordCopy(
-                urls: urls, expectedURLs: expectedURLs, pasteboardChangeCount: pasteboard.changeCount
-            ) else {
+            ) as? [URL] ?? [])
+            switch self.cutSession.observeCopy(
+                urls: urls, expectedURLs: expectedURLs, initialChangeCount: initialChangeCount,
+                changeCount: count, elapsed: startedAt.duration(to: .now)
+            ) {
+            case .waiting:
+                self.scheduleCopyCheck(expectedURLs: expectedURLs, initialChangeCount: initialChangeCount, startedAt: startedAt)
+            case .ready:
+                HUDPresenter.shared.show(message: L10n.string("quickFeatures.cutActivated", urls.count))
+            case .timedOut:
                 HUDPresenter.shared.show(message: L10n.string("quickFeatures.cutNoSelection"))
-                return
             }
-            HUDPresenter.shared.show(
-                message: L10n.string("quickFeatures.cutActivated", urls.count)
-            )
         }
-        pendingCopy = copy
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12, execute: copy)
+        pendingCopy = check
+        DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(20), execute: check)
     }
 
     private func postKey(keyCode: CGKeyCode, modifiers: CGEventFlags) {
-        guard let source = CGEventSource(stateID: .hidSystemState),
-              let keyDown = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: true),
-              let keyUp = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: false)
-        else {
-            return
-        }
-
-        for event in [keyDown, keyUp] {
-            event.flags = modifiers
-            event.setIntegerValueField(.eventSourceUserData, value: Self.generatedEventMarker)
-            event.post(tap: .cghidEventTap)
+        for event in FinderCutKeyEvents.make(keyCode: keyCode, modifiers: modifiers) {
+            event.post(tap: FinderCutKeyEvents.postingTap)
         }
     }
 

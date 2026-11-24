@@ -1,3 +1,4 @@
+import CoreGraphics
 import XCTest
 
 final class QuickFeaturesTests: XCTestCase {
@@ -213,6 +214,59 @@ final class FinderCutSessionTests: XCTestCase {
         XCTAssertTrue(session.recordCopy(urls: [first], expectedURLs: nil, pasteboardChangeCount: 5))
         session.cancel()
         XCTAssertFalse(session.canMove(pasteboardChangeCount: 5))
+    }
+
+    func testCopyAndMoveArePostedAfterTheHIDFallbackWithTheirMarkerAndFlags() {
+        XCTAssertEqual(FinderCutKeyEvents.postingTap, .cgSessionEventTap)
+        let shortcuts: [(CGKeyCode, CGEventFlags)] = [(8, .maskCommand), (9, [.maskCommand, .maskAlternate])]
+        for (keyCode, flags) in shortcuts {
+            let events = FinderCutKeyEvents.make(keyCode: keyCode, modifiers: flags)
+            XCTAssertEqual(events.map(\.type), [.keyDown, .keyUp])
+            for event in events {
+                XCTAssertEqual(event.getIntegerValueField(.keyboardEventKeycode), Int64(keyCode))
+                XCTAssertEqual(event.flags, flags)
+                XCTAssertTrue(FinderCutKeyEvents.isGenerated(event))
+            }
+        }
+    }
+
+    func testUnmarkedCopyIsNeverMistakenForClickMateCopy() throws {
+        let source = try XCTUnwrap(CGEventSource(stateID: .privateState))
+        let event = try XCTUnwrap(CGEvent(keyboardEventSource: source, virtualKey: 8, keyDown: true))
+        XCTAssertFalse(FinderCutKeyEvents.isGenerated(event))
+        // The observed HID echo arrives as a bare C with no marker. It cannot
+        // enter the Command+C cancellation branch.
+        XCTAssertFalse(event.flags.contains(.maskCommand))
+        event.flags = .maskCommand
+        XCTAssertFalse(FinderCutKeyEvents.isGenerated(event))
+        var session = FinderCutSession()
+        XCTAssertTrue(session.recordCopy(urls: [first], expectedURLs: nil, pasteboardChangeCount: 3))
+        if !FinderCutKeyEvents.isGenerated(event) {
+            session.cancel()
+        }
+        XCTAssertFalse(session.canMove(pasteboardChangeCount: 3))
+    }
+
+    func testCopyCanArriveAfterTheOld120MillisecondCheck() {
+        var session = FinderCutSession()
+        XCTAssertEqual(session.observeCopy(
+            urls: [first], expectedURLs: [first], initialChangeCount: 4, changeCount: 4, elapsed: .milliseconds(120)
+        ), .waiting)
+        XCTAssertEqual(session.observeCopy(
+            urls: [second], expectedURLs: [first], initialChangeCount: 4, changeCount: 5, elapsed: .milliseconds(140)
+        ), .waiting)
+        XCTAssertEqual(session.observeCopy(
+            urls: [first], expectedURLs: [first], initialChangeCount: 4, changeCount: 6, elapsed: .milliseconds(160)
+        ), .ready)
+        XCTAssertTrue(session.canMove(pasteboardChangeCount: 6))
+    }
+
+    func testMissingCopyTimesOutWithoutArmingTheMove() {
+        var session = FinderCutSession()
+        XCTAssertEqual(session.observeCopy(
+            urls: [], expectedURLs: [first], initialChangeCount: 4, changeCount: 4, elapsed: FinderCutSession.copyTimeout
+        ), .timedOut)
+        XCTAssertFalse(session.canMove(pasteboardChangeCount: 4))
     }
 
     func testSelectionChangedBeforeFinderCopyCannotArmMove() {

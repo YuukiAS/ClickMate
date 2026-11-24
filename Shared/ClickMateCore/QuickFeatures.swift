@@ -1,3 +1,4 @@
+import CoreGraphics
 import Foundation
 
 enum QuickFeatureID: String, Codable, CaseIterable, Hashable {
@@ -201,7 +202,48 @@ struct ScreenshotSettings: Codable, Equatable {
     }
 }
 
+enum FinderCutKeyEvents {
+    // Karabiner's HID fallback precedes the login-session tap. Posting there
+    // preserves the flags and marker instead of recreating the key via HID.
+    static let postingTap: CGEventTapLocation = .cgSessionEventTap
+    private static let marker: Int64 = 0x434D_4355_54
+
+    static func make(keyCode: CGKeyCode, modifiers: CGEventFlags) -> [CGEvent] {
+        guard let source = CGEventSource(stateID: .hidSystemState),
+              let keyDown = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: true),
+              let keyUp = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: false)
+        else { return [] }
+
+        for event in [keyDown, keyUp] {
+            event.flags = modifiers
+            event.setIntegerValueField(.eventSourceUserData, value: marker)
+        }
+        return [keyDown, keyUp]
+    }
+
+    static func isGenerated(_ event: CGEvent) -> Bool {
+        event.getIntegerValueField(.eventSourceUserData) == marker
+    }
+}
+
 struct FinderCutSession: Equatable {
+    static let copyTimeout: Duration = .milliseconds(350)
+
+    enum CopyProgress: Equatable {
+        case waiting, ready, timedOut
+    }
+
+    mutating func observeCopy(
+        urls: [URL], expectedURLs: [URL]?, initialChangeCount: Int,
+        changeCount: Int, elapsed: Duration
+    ) -> CopyProgress {
+        guard elapsed < Self.copyTimeout else { return .timedOut }
+        guard changeCount != initialChangeCount,
+              recordCopy(urls: urls, expectedURLs: expectedURLs, pasteboardChangeCount: changeCount)
+        else { return .waiting }
+        return .ready
+    }
+
     private(set) var urls: [URL] = []
     private(set) var pasteboardChangeCount: Int?
 
