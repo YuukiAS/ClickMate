@@ -38,6 +38,29 @@ final class FinderMenuContextTests: XCTestCase {
         XCTAssertEqual(context.actionURLs, [folder])
     }
 
+    func testTopLevelCopyPathTitleUsesSelectedFileName() {
+        let file = directory.appendingPathComponent("example.txt")
+        let context = FinderMenuContext(kind: .items, selectedURLs: [file], targetedURL: directory)
+
+        XCTAssertEqual(context.copyPathMenuTitle(isTopLevel: true, language: .simplifiedChinese), "将“example.txt”拷贝为路径名称")
+    }
+
+    func testTopLevelCopyPathTitleUsesSelectedFolderName() {
+        let folder = directory.appendingPathComponent("Example Folder", isDirectory: true)
+        let context = FinderMenuContext(kind: .items, selectedURLs: [folder], targetedURL: directory)
+
+        XCTAssertEqual(context.copyPathMenuTitle(isTopLevel: true, language: .simplifiedChinese), "将“Example Folder”拷贝为路径名称")
+    }
+
+    func testTopLevelCopyPathTitleUsesSelectionCount() {
+        let items = ["first.txt", "second.txt", "folder"].map { directory.appendingPathComponent($0) }
+        let context = FinderMenuContext(kind: .items, selectedURLs: items, targetedURL: directory)
+
+        XCTAssertEqual(context.copyPathMenuTitle(isTopLevel: true, language: .simplifiedChinese), "将3个项目拷贝为路径名称")
+        XCTAssertEqual(context.copyPathMenuTitle(isTopLevel: true, language: .english), "Copy 3 Items as Pathnames")
+        XCTAssertEqual(context.copyPathMenuTitle(isTopLevel: false, language: .simplifiedChinese), "拷贝为路径名称")
+    }
+
     func testExecutionRejectsChangedSelectionInsteadOfUsingNewFiles() {
         let original = directory.appendingPathComponent("original.txt")
         let changed = directory.appendingPathComponent("other.txt")

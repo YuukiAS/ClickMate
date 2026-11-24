@@ -474,7 +474,7 @@ class FinderSync: FIFinderSync {
         }
 
         for command in MenuLayoutPolicy.selectedShortcutCommands(for: group, preferences: store.preferences) {
-            menu.addItem(commandItem(command, context: context))
+            menu.addItem(commandItem(command, context: context, isTopLevel: true))
         }
     }
 
@@ -548,9 +548,9 @@ class FinderSync: FIFinderSync {
         menu.addItem(item)
     }
 
-    private func commandItem(_ command: MenuCommand, context: FinderContext) -> NSMenuItem {
+    private func commandItem(_ command: MenuCommand, context: FinderContext, isTopLevel: Bool = false) -> NSMenuItem {
         actionItem(
-            title: command.title,
+            title: command == .copyPOSIXPath ? context.copyPathMenuTitle(isTopLevel: isTopLevel) : command.title,
             token: .command(command),
             context: context,
             isEnabled: isCommandEnabled(command, context: context),

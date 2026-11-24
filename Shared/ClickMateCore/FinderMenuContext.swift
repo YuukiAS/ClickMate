@@ -23,6 +23,22 @@ struct FinderMenuContext {
 
     var actionURLs: [URL] { selectedURLs }
 
+    func copyPathMenuTitle(isTopLevel: Bool, language: AppLanguage = L10n.languageProvider()) -> String {
+        guard isTopLevel, let first = selectedURLs.first else {
+            return L10n.string("finder.copyPath", language: language)
+        }
+        if selectedURLs.count == 1 {
+            return String(
+                format: L10n.string("finder.copyPath.single", language: language),
+                FileManager.default.displayName(atPath: first.path)
+            )
+        }
+        return String(
+            format: L10n.string("finder.copyPath.multiple", language: language),
+            selectedURLs.count
+        )
+    }
+
     var cutSelection: [URL] {
         kind == .items && selectedURLs.allSatisfy(\.isFileURL) ? selectedURLs : []
     }
